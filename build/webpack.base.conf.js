@@ -68,6 +68,7 @@ let baseWebpackConfig = {
       '@api': resolve('src/api'),
       '@assets': resolve('src/assets'),
       '@design': resolve('src/design/index.styl'),
+      '@style': resolve('src/design'),
       '@state': resolve('src/state'),
       '@mixins': resolve('src/mixins'),
       '@pages': resolve('src/pages'),
@@ -150,6 +151,9 @@ let baseWebpackConfig = {
       {
         from: 'src/pages/**/*.json',
         to: 'pages/[name].json',
+        transformPath(targetPath, absolutePath) {
+          return utils.pathHandle(targetPath, absolutePath)
+        }
       }
     ]),
     new CopyWebpackPlugin([

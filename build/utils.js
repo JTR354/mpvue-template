@@ -115,3 +115,16 @@ exports.writeFrameworkinfo = function () {
   writeFile(rootDir, content)
   writeFile(distDir, content)
 }
+
+// page.json copy handle
+exports.pathHandle = function (targetPath, absolutePath) {
+  let arr = absolutePath.toString().split('pages\\')
+  let fullPath = arr[1]
+  let packageName = fullPath.split('\\')[0]
+  let fileName = fullPath.split('\\')[2]
+  if (packageName === 'main') {
+    return targetPath
+  } else {
+    return packageName + '/' + fileName
+  }
+}
