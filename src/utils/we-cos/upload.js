@@ -2,6 +2,7 @@ import COS from './libs/cos-wx-sdk-v5'
 import Upload from './api-upload'
 import { ERR_OK } from '@utils/config'
 import { fileType } from './fileConfig'
+import * as WeChat from '@utils/wechat'
 
 const SIGN_ERROR = 1
 const CHOICE_ERROR = 2
@@ -9,23 +10,18 @@ const UPLOAD_ERROR = 3
 const SAVE_ERROR = 4
 
 const {IMAGE_TYPE, VIDEO_TYPE} = fileType
+let sign = ''
 
 /**
  * 实例COS
  */
 let cos = new COS({
   getAuthorization: function (params, callback) {
-    Upload.getUploadSign().then((res) => {
-      console.log(res, 222)
-      if (res.error !== ERR_OK) {
-        throw new Error(res)
-      }
-      callback(res.data.sign)
-    }).catch((err) => {
-      if (err) {
-        throw handleException(SIGN_ERROR)
-      }
-    })
+    if (sign) {
+      callback(sign)
+    } else {
+      throw handleException(SIGN_ERROR)
+    }
   }
 })
 
@@ -37,35 +33,10 @@ let cos = new COS({
  * @param count 选择数量
  * @returns {Promise}
  */
-export default function chooseFiles(fileType = IMAGE_TYPE, count = 9, showProcess, processCallBack) {
+export default function chooseFiles(fileType = IMAGE_TYPE, count = 1, showProcess, processCallBack) {
   return new Promise((resolve, reject) => {
     fileController(fileType, count).then((filePaths) => {
-      showProcess && showProcess()
-      let type = fileType === VIDEO_TYPE ? 'video' : 'image'
-      let requests = filePaths.map((filePath) => {
-        return Upload.getUploadParam().then((res) => {
-          console.log(res, 111)
-          if (res.error !== ERR_OK) {
-            throw new Error(res)
-          }
-          const data = res.data
-          if (data) {
-            let params = reorganizeParams(data, filePath, processCallBack)
-            return postObject(params, type)
-          }
-        }).catch((err) => {
-          if (err) {
-            reject(handleException(UPLOAD_ERROR))
-          }
-        })
-      })
-      Promise.all(requests).then((res) => {
-        resolve(res)
-      }).catch((err) => {
-        if (err) {
-          reject(err)
-        }
-      })
+      actionUpload(showProcess, filePaths, processCallBack, resolve, reject)
     })
   })
 }
@@ -80,34 +51,51 @@ export default function chooseFiles(fileType = IMAGE_TYPE, count = 9, showProces
  */
 export function uploadFiles(fileType, filePaths, showProcess, processCallBack) {
   return new Promise((resolve, reject) => {
-    showProcess && showProcess()
-    let type = fileType === VIDEO_TYPE ? 'video' : 'image'
-    let requests = filePaths.map((filePath) => {
-      return Upload.getUploadParam().then((res) => {
-        if (res.error !== ERR_OK) {
-          throw new Error(res)
-        }
-        const data = res.data
-        if (data) {
-          let params = reorganizeParams(data, filePath, processCallBack)
-          return postObject(params, type)
-        }
-      }).catch((err) => {
-        if (err) {
-          reject(handleException(UPLOAD_ERROR))
-        }
-      })
-    })
-    Promise.all(requests).then((res) => {
-      resolve(res)
-    }).catch((err) => {
-      if (err) {
-        reject(err)
-      }
-    })
+    actionUpload(showProcess, filePaths, processCallBack, resolve, reject)
   })
 }
 
+/**
+ * 上传图片操作
+ * @param showProcess
+ * @param filePaths
+ * @param processCallBack
+ * @param resolve
+ * @param reject
+ */
+function actionUpload(showProcess, filePaths, processCallBack, resolve, reject) {
+  WeChat.showLoading()
+  showProcess && showProcess()
+  let type = fileType === VIDEO_TYPE ? 'video' : 'image'
+  let requests = filePaths.map((filePath) => {
+    let suffix = getSuffix(filePath)
+    let image = createFigureName('', suffix)
+    return Upload.getUploadParam({image}).then((res) => {
+      if (res.error_code !== ERR_OK) {
+        throw new Error(res)
+      }
+      const data = res.data
+      if (data) {
+        sign = data.sign
+        let params = reorganizeParams(data, filePath, processCallBack)
+        return postObject(params, type)
+      }
+    }).catch((err) => {
+      if (err) {
+        reject(handleException(UPLOAD_ERROR))
+      }
+    })
+  })
+  Promise.all(requests).then((res) => {
+    resolve(res)
+  }).catch((err) => {
+    if (err) {
+      reject(err)
+    }
+  }).finally(() => {
+    WeChat.hideLoading()
+  })
+}
 /**
  * @param type 文件类型
  * @param count 选择数量
@@ -158,17 +146,9 @@ function postObject(params, fileType) {
     cos.postObject(params, function (err, data) {
       if (!err && data.statusCode === 200) {
         Upload.saveFile({path: `/${params.Key}`, file_type: fileType || ''}).then(files => {
-          // Todo 隐藏加载器
-          if (files.error === ERR_OK) {
-            resolve(files.data)
-          } else {
-            reject(handleException(SAVE_ERROR))
-          }
-        }).catch(err => {
-          if (err) {
-            // Todo 隐藏加载器
-            reject(handleException(SAVE_ERROR))
-          }
+          resolve(files.data)
+        }).catch(() => {
+          reject(handleException(SAVE_ERROR))
         })
       } else {
         reject(handleException(UPLOAD_ERROR))
@@ -185,9 +165,9 @@ function postObject(params, fileType) {
  * @returns {{Bucket: *, Region: *, Key: *, FilePath: *, onProgress: onProgress}}
  */
 function reorganizeParams(data, filepath, callback) {
-  const {path, bucket, region} = data
+  const {pathname, bucket, region} = data
   let suffix = getSuffix(filepath)
-  let key = path + suffix
+  let key = createFigureName(pathname, suffix)
   const params = {
     Bucket: bucket,
     Region: region,
@@ -200,6 +180,16 @@ function reorganizeParams(data, filepath, callback) {
     }
   }
   return params
+}
+
+/**
+ * 生成文件名
+ * @returns {string}
+ */
+function createFigureName(pathname, suffix) {
+  if (pathname) return pathname
+  let random = ~~(Math.random() * 10 * 6) + ''
+  return Date.now() + random.padStart(6, '0') + suffix
 }
 
 /**

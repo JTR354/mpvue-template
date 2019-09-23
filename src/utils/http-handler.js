@@ -3,6 +3,7 @@ import { showLoading, hideLoading, showToast } from '@utils/wechat'
 import { baseURL, ERR_OK, TIME_OUT } from '@utils/config'
 
 const COMMON_HEADER = {}
+const ERR_KEY = 'error_code'
 
 HTTP.init(http => {
   http.config.timeout = TIME_OUT
@@ -34,8 +35,8 @@ HTTP.setCallback({
     } else if (loading) {
       hideLoading()
     }
-    if (res.code !== ERR_OK) {
-      errorCodeHandle(res.code)
+    if (res[ERR_KEY] !== ERR_OK) {
+      errorCodeHandle(res[ERR_KEY])
     }
     // 可自定义处理toast错误
     if (res.error !== ERR_OK) {
@@ -46,7 +47,7 @@ HTTP.setCallback({
       }
     }
     // 处理错误函数
-    if (res.code !== ERR_OK || res.error !== ERR_OK) {
+    if (res[ERR_KEY] !== ERR_OK) {
       console.error(url + ' <<<<<<接口异常>>>>> ' + JSON.stringify(res))
       err = true
       if (typeof doctor === 'function') {
@@ -67,8 +68,6 @@ HTTP.setCallback({
 function errorCodeHandle(code) {
   switch (code) {
     case 10000:
-      break
-    case 13005:
       break
     default:
       break
