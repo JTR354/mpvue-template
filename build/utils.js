@@ -118,13 +118,14 @@ exports.writeFrameworkinfo = function () {
 
 // page.json copy handle
 exports.pathHandle = function (targetPath, absolutePath) {
-  let arr = absolutePath.toString().split('pages\\')
+  let arr = absolutePath.toString().split('pages' + path.sep)
   let fullPath = arr[1]
-  let packageName = fullPath.split('\\')[0]
-  let fileName = fullPath.split('\\')[2]
+  if (fullPath) return targetPath
+  let packageName = fullPath.split(path.sep)[0]
+  let fileName = fullPath.split(path.sep)[2]
   if (packageName === 'main') {
     return targetPath
   } else {
-    return packageName + '/' + fileName
+    return packageName + path.sep + fileName
   }
 }
